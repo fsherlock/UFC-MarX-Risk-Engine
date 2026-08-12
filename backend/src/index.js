@@ -74,6 +74,7 @@ app.get("/api", (req, res) => {
 // -------------------------- Share permalink short URL --------------------------
 // IMPORTANT: mount BEFORE static middleware & before API routes NOT static dir (cards/:token vs /index.html ambiguous)
 // GET /cards/:shareToken → redirects to static frontend with ?share=TOKEN
+app.get("/api/health", (_req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 app.get("/cards/:token", (req, res) => {
   const token = encodeURIComponent(req.params.token);
   res.redirect(302, `/?share=${token}`);
