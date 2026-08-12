@@ -1,0 +1,23 @@
+{
+  "name": "ufc-marx",
+  "version": "1.0.0-tier1",
+  "private": true,
+  "description": "UFC MarX Risk Engine — dual-mode (static zero-backend OR Supabase-backed persistent with save/share/bet-tracking).",
+  "scripts": {
+    "install:all": "npm install ; cd backend ; npm install",
+    "dev:static": "npx http-server . -p 8080 -c-1",
+    "dev:backend": "node --watch backend/src/index.js",
+    "dev": "node node_modules/concurrently/dist/bin/concurrently.js -n STATIC,BACK -c blue,magenta \"npx http-server . -p 8080 -c-1\" \"node --watch backend/src/index.js\"",
+    "smoke:math": "cd backend ; npm run smoke",
+    "lint": "node --check js/app.js ; node --check js/fightnomics.js ; node --check js/data.js ; cd backend ; npm run check:all",
+    "sync:bundle": "Copy-Item -Force data/fighter_stats_bundle.js backend/src/services/fighter_stats_bundle.js ; Copy-Item -Force js/fightnomics.js backend/src/services/fightnomics.js ; Write-Host 'Synced fightnomics.js + fighter_stats_bundle.js → backend/'",
+    "verify:drift": "node -e \"const fs=require('fs'); const a=fs.readFileSync('js/fightnomics.js','utf8'); const b=fs.readFileSync('backend/src/services/fightnomics.js','utf8'); const c=fs.readFileSync('data/fighter_stats_bundle.js','utf8'); const d=fs.readFileSync('backend/src/services/fighter_stats_bundle.js','utf8'); console.log('fightnomics drift:', a===b ? 'OK' : 'DRIFT'); console.log('bundle drift:     ', c===d ? 'OK' : 'DRIFT'); process.exit((a===b && c===d)?0:1);\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "http-server": "^14.1.1"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

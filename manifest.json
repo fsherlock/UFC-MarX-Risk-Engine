@@ -1,0 +1,17 @@
+{
+  "name": "UFC MarX Risk Engine",
+  "short_name": "MarX",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0b0f16",
+  "theme_color": "#ef4444",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/9/92/UFC_Logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

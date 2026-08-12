@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UFC MarX Risk Engine — Kelly · Fightnomics · Monte Carlo</title>
+    <meta name="description" content="Build UFC parlay cards with 25-feature Fightnomics priors, Broadview vig-removal, 0.25× Fractional Kelly sizing, and honest Monte Carlo P5/P95/drawdown. Save, share, track ROI." />
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b0f16">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Open Graph / Twitter/X / WhatsApp link preview -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="UFC MarX Risk Engine" />
+    <meta property="og:title" content="UFC MarX Risk Engine — Fightnomics Parlay Builder" />
+    <meta property="og:description" content="Kelly criterion · FN model · vig-free market · Monte Carlo P5/P95. Build a card → save → share with a public permalink." />
+    <meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/9/92/UFC_Logo.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="UFC MarX Risk Engine" />
+    <meta name="twitter:description" content="Fightnomics priors + Kelly + honest Monte Carlo P5/P95 for MMA parlays." />
+    <meta name="twitter:image" content="https://upload.wikimedia.org/wikipedia/commons/9/92/UFC_Logo.svg" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Kanit:ital,wght@0,900;1,900&display=swap" rel="stylesheet" />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Lora', 'serif'],
+              heading: ['Poppins', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+              ufc: ['Kanit', 'sans-serif'],
+            },
+            colors: {
+              anthropic: {
+                dark: "#141413",
+                light: "#faf9f5",
+                mid: "#b0aea5",
+                subtle: "#e8e6dc",
+                orange: "#d97757",
+                blue: "#6a9bcc",
+                green: "#788c5d",
+              },
+              surface: "#141413",
+              glass: "rgba(250,249,245,0.05)",
+              accent: "#d97757",
+              accentLight: "#e8a38c",
+              accentDark: "#b95c3f",
+              greenGlow: "#788c5d",
+              yellowGlow: "#d97757",
+            },
+            boxShadow: {
+              glow: "0 0 20px rgba(217,119,87,0.1), 0 0 40px rgba(217,119,87,0.05)",
+              "glow-blue": "0 0 20px rgba(106,155,204,0.1), 0 0 40px rgba(106,155,204,0.05)",
+            },
+            backdropBlur: {
+              xs: "2px",
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="stylesheet" href="css/style.css">
+  </head>
+  <body class="min-h-screen bg-anthropic-dark text-anthropic-light font-sans custom-scrollbar relative selection:bg-anthropic-orange/30">
+    <div id="intro-screen" class="fixed inset-0 z-[100] bg-anthropic-dark flex items-center justify-center transition-opacity duration-700">
+      <div class="text-center relative">
+        <h1 class="text-6xl md:text-9xl font-heading font-black tracking-tighter text-anthropic-light glitch-text select-none" data-text="UFC">UFC</h1>
+        <div class="h-1 bg-anthropic-orange mt-4 mx-auto rounded-full animate-loader"></div>
+      </div>
+    </div>
+    <div class="bg-noise"></div>
+    <div id="custom-cursor" class="hidden md:block"></div>
+    <div id="custom-cursor-ring" class="hidden md:block"></div>
+    <div class="fixed inset-0 -z-10 pointer-events-none">
+      <div class="absolute top-0 left-1/4 w-96 h-96 bg-anthropic-orange/5 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-anthropic-blue/5 rounded-full blur-3xl"></div>
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-anthropic-green/5 rounded-full blur-3xl"></div>
+      <canvas id="bgParticles" class="absolute inset-0 w-full h-full"></canvas>
+    </div>
+    <header class="px-4 sm:px-6 lg:px-8 py-6 sticky top-0 z-50 bg-anthropic-dark/80 backdrop-blur-md border-b border-white/5 shadow-lg cursor-pointer transition-[background-color] hover:bg-anthropic-dark/95 focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" role="banner">
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/9/92/UFC_Logo.svg" alt="UFC Logo" width="32" height="32" class="h-8 w-auto object-contain filter grayscale invert opacity-90 drop-shadow-lg" />
+          <div>
+            <h1 class="text-xl sm:text-2xl font-heading font-black tracking-tighter italic flex items-baseline gap-2">
+              <span class="font-ufc uppercase text-anthropic-orange" translate="no">MarX</span> <span class="text-anthropic-light not-italic font-extrabold tracking-tight text-sm sm:text-lg opacity-90">Risk Engine</span>
+            </h1>
+            <p class="text-[11px] text-anthropic-mid font-mono mt-0.5 uppercase tracking-widest">v2.0 · Kelly ¼× · Anthropic Brand Identity</p>
+          </div>
+        </div>
+        <nav class="hidden sm:flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 backdrop-blur" role="navigation" aria-label="Main Navigation">
+          <button data-nav="engine" class="nav-pill px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors bg-anthropic-orange/20 text-anthropic-orange border border-anthropic-orange/30 focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none">Build</button>
+          <button data-nav="upcoming" class="nav-pill px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors hover:bg-white/10 text-anthropic-mid focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none">Upcoming</button>
+          <button data-nav="saved" class="nav-pill px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors hover:bg-white/10 text-anthropic-mid focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none">Saved</button>
+        </nav>
+        <div id="liveOddsBadge" class="hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-white/10 bg-white/5 text-anthropic-mid" role="status" aria-live="polite">
+          <span class="w-1.5 h-1.5 rounded-full bg-anthropic-mid"></span>
+          <span>Offline</span>
+        </div>
+      </div>
+    </header>
+    <main class="px-4 sm:px-6 lg:px-8 pb-20">
+      <section class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-8 space-y-6">
+          <div id="upcomingPanel" class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-glow overflow-hidden">
+            <div class="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="h-9 w-9 rounded-xl bg-anthropic-orange/20 border border-anthropic-orange/30 flex items-center justify-center shrink-0" aria-hidden="true">
+                  <svg class="w-4 h-4 text-anthropic-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </div>
+                <div class="min-w-0">
+                  <h2 class="text-lg font-heading font-extrabold text-anthropic-light flex items-center gap-2">Live Upcoming Schedule <span id="upcomingCountBadge" class="hidden rounded-full px-2 py-0.5 text-[10px] bg-anthropic-orange/20 text-anthropic-orange border border-anthropic-orange/30" role="status">0</span></h2>
+                  <p id="upcomingMeta" class="text-xs text-anthropic-mid mt-0.5 font-mono truncate">Loading live feed from odds-api.io…</p>
+                  <p id="oddsConfigChip" class="text-[10px] text-anthropic-mid mt-1 font-mono truncate opacity-70">📡 odds feed: connecting…</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button id="refreshUpcomingBtn" class="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] border border-white/10 bg-white/5 hover:bg-white/10 text-anthropic-light font-heading font-semibold transition-[background-color] focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none" title="Refresh live feed" aria-label="Refresh live fight schedule">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div id="upcomingBody" class="transition-all duration-300 overflow-hidden">
+              <div id="upcomingSkeleton" class="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div class="h-32 rounded-xl bg-gradient-to-br from-white/5 to-white/0 border border-white/5 animate-pulse"></div>
+                <div class="h-32 rounded-xl bg-gradient-to-br from-white/5 to-white/0 border border-white/5 animate-pulse"></div>
+                <div class="h-32 rounded-xl bg-gradient-to-br from-white/5 to-white/0 border border-white/5 animate-pulse"></div>
+              </div>
+              <div id="upcomingFeed" class="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 hidden">
+              </div>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-glow">
+            <div class="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between">
+              <h2 class="text-lg font-heading font-extrabold text-anthropic-light">Configuration</h2>
+              <button id="resetBtn" class="text-xs px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-anthropic-mid hover:text-anthropic-light transition-[background-color,color] focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none" aria-label="Reset all configuration values">Reset</button>
+            </div>
+            <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label for="fightCount" class="block text-sm mb-2 font-heading font-semibold text-anthropic-mid">Number of Fights <span class="text-[10px] opacity-60 font-normal">(1-5)</span></label>
+                <input id="fightCount" type="number" name="fightCount" min="1" max="5" value="3" class="w-full rounded-lg bg-black/20 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 transition-all font-mono text-sm" autocomplete="off" aria-describedby="fightCountError" />
+                <p id="fightCountError" class="mt-2 text-xs text-anthropic-orange hidden" role="alert"></p>
+              </div>
+              <div>
+                <label for="bankroll" class="block text-sm mb-2 font-heading font-semibold text-anthropic-mid">Total Bankroll <span class="text-[10px] opacity-60 font-normal">($)</span></label>
+                <input id="bankroll" type="number" name="bankroll" min="1" step="0.01" value="1000" class="w-full rounded-lg bg-black/20 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 transition-all font-mono text-sm" autocomplete="off" aria-describedby="bankrollError" />
+                <p id="bankrollError" class="mt-2 text-xs text-anthropic-orange hidden" role="alert"></p>
+              </div>
+              <div class="flex items-end">
+                <button id="buildBtn" class="w-full rounded-lg bg-anthropic-orange hover:bg-anthropic-orange/90 text-anthropic-light font-heading font-bold transition-[background-color,transform] border border-anthropic-orange/30 px-4 py-2 shadow-lg focus-visible:ring-2 focus-visible:ring-white/50 outline-none active:scale-[0.98]">
+                  Build Fights
+                </button>
+              </div>
+              <div class="sm:col-span-3 flex flex-wrap items-center gap-6">
+                <label class="flex items-center gap-2 text-sm text-anthropic-mid cursor-pointer hover:text-anthropic-light transition-colors">
+                  <input id="mcToggle" type="checkbox" name="mcMode" class="accent-anthropic-orange focus-visible:ring-2 focus-visible:ring-anthropic-orange/50">
+                  Monte Carlo mode (10,000 trials)
+                </label>
+                <div class="flex items-center gap-1.5 text-xs" role="radiogroup" aria-label="Strategy Probability Drive">
+                  <span class="text-anthropic-mid uppercase tracking-widest font-bold mr-1">Strategy Probability Drive</span>
+                  <label class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer has-[:checked]:bg-anthropic-orange/20 has-[:checked]:border-anthropic-orange/50 has-[:checked]:text-anthropic-orange transition-colors focus-within:ring-2 focus-within:ring-anthropic-orange/50">
+                    <input name="probMode" value="user" type="radio" class="accent-anthropic-orange" checked>
+                    <span class="font-bold">My Confidence</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer has-[:checked]:bg-anthropic-blue/20 has-[:checked]:border-anthropic-blue/50 has-[:checked]:text-anthropic-blue transition-colors focus-within:ring-2 focus-within:ring-anthropic-blue/50">
+                    <input name="probMode" value="fn" type="radio" class="accent-anthropic-blue">
+                    <span class="font-bold">Fightnomics Prior</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer has-[:checked]:bg-anthropic-green/20 has-[:checked]:border-anthropic-green/50 has-[:checked]:text-anthropic-green transition-colors focus-within:ring-2 focus-within:ring-anthropic-green/50">
+                    <input name="probMode" value="market" type="radio" class="accent-anthropic-green">
+                    <span class="font-bold">Market No-Vig</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="fightsContainer" class="grid grid-cols-1 gap-4 md:gap-6 min-h-[200px]">
+            <div class="w-full flex flex-col items-center justify-center py-12 text-anthropic-mid border-2 border-dashed border-white/10 rounded-2xl bg-white/5 backdrop-blur-sm">
+              <div class="w-16 h-16 mb-4 rounded-full bg-white/5 flex items-center justify-center shadow-inner">
+                <svg class="w-8 h-8 text-anthropic-mid opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <p class="text-base font-heading font-medium text-anthropic-light">Ready to Configure</p>
+              <p class="text-sm mt-1 opacity-60">Set fights & bankroll above, then click Build</p>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button id="calcBtn" disabled class="holo-button rounded-xl px-5 py-3 text-anthropic-light font-heading font-bold transition-[background-color,transform,opacity] focus-visible:ring-2 focus-visible:ring-anthropic-orange/50 outline-none active:scale-[0.98]" title="Build fights and fix errors to calculate" aria-label="Calculate strategies based on current fight card">
+              Calculate Strategies
+            </button>
+            <button id="saveCardBtn" disabled class="hidden sm:inline-flex rounded-xl px-4 py-2 border border-anthropic-green/40 bg-anthropic-green/10 text-anthropic-green hover:bg-anthropic-green/20 transition-[background-color,transform] font-heading font-bold focus-visible:ring-2 focus-visible:ring-anthropic-green/50 outline-none active:scale-[0.98]" title="Save this card to backend + get a share permalink." aria-label="Save current fight card">
+              💾 Save Card
+            </button>
+            <button id="openSavedBtn" class="inline-flex rounded-xl px-4 py-2 border border-anthropic-blue/40 bg-anthropic-blue/10 text-anthropic-blue hover:bg-anthropic-blue/20 transition-[background-color,transform] font-heading font-bold focus-visible:ring-2 focus-visible:ring-anthropic-blue/50 outline-none active:scale-[0.98]" title="Open Saved Cards dashboard (requires backend running)." aria-label="Open saved cards dashboard">
+              🗂️ Saved Cards
+            </button>
+            <button id="exportBtn" disabled class="rounded-xl px-4 py-2 bg-white/5 border border-white/10 text-anthropic-mid font-heading font-bold transition-[background-color,transform] focus-visible:ring-2 focus-visible:ring-white/50 outline-none active:scale-[0.98]" title="Run Calculate Strategies first" aria-label="Export results as PDF">Export PDF</button>
+          </div>
+          <p id="calcError" class="mt-4 text-sm text-anthropic-orange font-medium hidden"></p>
+          
+    <div id="loadingWrap" class="fixed inset-0 z-[60] flex items-center justify-center bg-anthropic-dark/80 backdrop-blur-sm hidden">
+      <div class="w-72 p-6 rounded-2xl bg-anthropic-dark border border-white/10 shadow-2xl text-center">
+        <div class="h-12 w-12 mx-auto mb-4 border-4 border-anthropic-orange/30 border-t-anthropic-orange rounded-full animate-spin"></div>
+        <p id="loadingMsg" class="text-sm font-heading font-bold text-anthropic-light mb-4">Simulating Strategies...</p>
+        <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden mb-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBarContainer">
+          <div id="loadingBar" class="h-full bg-anthropic-orange transition-all duration-300 w-0"></div>
+        </div>
+        <div class="flex justify-between items-center text-[10px] font-mono text-anthropic-mid uppercase tracking-widest">
+          <span>Monte Carlo</span>
+          <span id="loadingPct">0%</span>
+        </div>
+      </div>
+    </div>
+
+          <div id="resultsContainer" class="space-y-8 mt-8"></div>
+        </div>
+        <aside class="space-y-6 lg:sticky lg:top-6 lg:col-span-4">
+          <div class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-glow">
+            <div class="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-heading font-extrabold text-anthropic-light">Risk Summary</h2>
+                <p class="text-xs text-anthropic-mid">Computed per strategy</p>
+              </div>
+              <div class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest rounded-full px-2 py-0.5 border border-white/10 bg-white/5 text-anthropic-mid">
+                <span class="w-1.5 h-1.5 rounded-full bg-anthropic-orange animate-pulse"></span>
+                <span>Live</span>
+              </div>
+            </div>
+            <div id="riskSummary" class="p-5 sm:p-6 space-y-6"></div>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-glow">
+            <div class="p-5 sm:p-6">
+              <h2 class="text-lg font-heading font-bold text-anthropic-light">Playbook</h2>
+              <ul class="mt-3 text-sm text-anthropic-mid space-y-3 font-sans">
+                <li class="flex items-start gap-2"><span class="text-anthropic-orange mt-0.5 shrink-0">▍</span><span><b class="text-anthropic-light">Kelly ¼×</b> — 25% of theoretical Kelly limits ruin risk.</span></li>
+                <li class="flex items-start gap-2"><span class="text-anthropic-blue mt-0.5 shrink-0">▍</span><span><b class="text-anthropic-light">Fightnomics Prior</b> — 25-feature delta model.</span></li>
+                <li class="flex items-start gap-2"><span class="text-anthropic-green mt-0.5 shrink-0">▍</span><span><b class="text-anthropic-light">Vig-removed market</b> — Broadview method.</span></li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+    <template id="fightTemplate">
+      <div class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-glow w-full">
+        <div class="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 rounded-full bg-anthropic-dark/50 border border-white/10 flex items-center justify-center" aria-hidden="true">
+              <span class="text-xs font-mono text-anthropic-mid">#<span class="fightIndex"></span></span>
+            </div>
+            <h3 class="text-base font-heading font-bold text-anthropic-light">Matchup <span class="fightIndex"></span></h3>
+          </div>
+          <div class="text-[10px] uppercase tracking-widest text-anthropic-mid font-bold" aria-hidden="true">Configure Matchup</div>
+        </div>
+        <div class="p-5 sm:p-6 relative">
+          <div class="grid grid-cols-2 md:grid-cols-2 gap-3 sm:gap-6">
+            <div class="rounded-xl border border-white/10 bg-black/20 fight-card">
+              <div class="p-6 space-y-3">
+                <div>
+                  <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-name-label">Fighter A Name</label>
+                  <input type="text" class="fighter-name w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all font-mono text-sm text-anthropic-light" placeholder="Search fighter…" autocomplete="off" />
+                  <p class="error-name mt-1 text-xs text-anthropic-orange hidden" role="alert"></p>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-odds-label">Decimal Odds</label>
+                    <input type="number" step="0.01" min="1.01" class="fighter-odds w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all font-mono text-sm text-anthropic-light" placeholder="1.80" inputmode="decimal" />
+                    <p class="error-odds mt-1 text-xs text-anthropic-orange hidden" role="alert"></p>
+                    <p class="mt-1 text-[11px] text-anthropic-mid font-mono fighter-meta">Implied: —</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-status-label">Status</label>
+                    <select class="fighter-status w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all text-sm text-anthropic-light" aria-label="Betting status for Fighter A">
+                      <option value="neutral">Neutral</option>
+                      <option value="lock">🔒 LOCK</option>
+                      <option value="fade">⚠️ FADE</option>
+                    </select>
+                  </div>
+                </div>
+              <div>
+                <label class="block text-xs mb-2 text-anthropic-mid font-heading font-semibold flex justify-between fighter-conf-label">
+                  <span>Confidence</span>
+                  <span class="confidence-value font-mono text-anthropic-light">75%</span>
+                </label>
+                <div class="relative h-2 bg-black/40 rounded-full mb-1 overflow-hidden" aria-hidden="true">
+                   <div class="absolute top-0 left-0 h-full bg-anthropic-orange w-full opacity-10"></div>
+                   <div class="implied-marker absolute top-0 bottom-0 w-0.5 bg-anthropic-light z-10 hidden"></div>
+                   <div class="confidence-fill absolute top-0 left-0 h-full bg-anthropic-orange transition-all duration-300" style="width: 75%"></div>
+                </div>
+                <input type="range" min="50" max="100" value="75" class="fighter-confidence w-full accent-anthropic-orange opacity-0 absolute inset-0 cursor-pointer z-20 h-6 -mt-4" aria-label="Confidence level for Fighter A" />
+                <div class="flex justify-between text-[10px] text-anthropic-mid font-mono mt-1" aria-hidden="true">
+                  <span>50%</span>
+                  <span class="edge-display text-anthropic-orange/80">0% Edge</span>
+                  <span>100%</span>
+                </div>
+              </div>
+              </div>
+            </div>
+
+            <!-- VS Badge -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-anthropic-dark border border-white/10 z-10 shadow-xl pointer-events-none" aria-hidden="true">
+              <span class="text-[10px] font-heading font-bold text-anthropic-mid">VS</span>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-black/20 fight-card">
+              <div class="p-6 space-y-3">
+                <div>
+                  <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-name-label">Fighter B Name</label>
+                  <input type="text" class="fighter-name w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all font-mono text-sm text-anthropic-light" placeholder="Search fighter…" autocomplete="off" />
+                  <p class="error-name mt-1 text-xs text-anthropic-orange hidden" role="alert"></p>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-odds-label">Decimal Odds</label>
+                    <input type="number" step="0.01" min="1.01" class="fighter-odds w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all font-mono text-sm text-anthropic-light" placeholder="2.10" inputmode="decimal" />
+                    <p class="error-odds mt-1 text-xs text-anthropic-orange hidden" role="alert"></p>
+                    <p class="mt-1 text-[11px] text-anthropic-mid font-mono fighter-meta">Implied: —</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs mb-1 text-anthropic-mid font-heading font-semibold fighter-status-label">Status</label>
+                    <select class="fighter-status w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-anthropic-orange/50 transition-all text-sm text-anthropic-light" aria-label="Betting status for Fighter B">
+                      <option value="neutral">Neutral</option>
+                      <option value="lock">🔒 LOCK</option>
+                      <option value="fade">⚠️ FADE</option>
+                    </select>
+                  </div>
+                </div>
+              <div>
+                <label class="block text-xs mb-2 text-anthropic-mid font-heading font-semibold flex justify-between fighter-conf-label">
+                  <span>Confidence</span>
+                  <span class="confidence-value font-mono text-anthropic-light">75%</span>
+                </label>
+                <div class="relative h-2 bg-black/40 rounded-full mb-1 overflow-hidden" aria-hidden="true">
+                   <div class="absolute top-0 left-0 h-full bg-anthropic-orange w-full opacity-10"></div>
+                   <div class="implied-marker absolute top-0 bottom-0 w-0.5 bg-anthropic-light z-10 hidden"></div>
+                   <div class="confidence-fill absolute top-0 left-0 h-full bg-anthropic-orange transition-all duration-300" style="width: 75%"></div>
+                </div>
+                <input type="range" min="50" max="100" value="75" class="fighter-confidence w-full accent-anthropic-orange opacity-0 absolute inset-0 cursor-pointer z-20 h-6 -mt-4" aria-label="Confidence level for Fighter B" />
+                <div class="flex justify-between text-[10px] text-anthropic-mid font-mono mt-1" aria-hidden="true">
+                  <span>50%</span>
+                  <span class="edge-display text-anthropic-orange/80">0% Edge</span>
+                  <span>100%</span>
+                </div>
+              </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Tale of the Tape Visualization -->
+          <div class="tale-of-the-tape hidden mt-6 pt-6 border-t border-white/10">
+             <h4 class="text-[10px] font-heading font-bold uppercase tracking-widest text-anthropic-mid text-center mb-6">Fighter Analysis · Tale of the Tape</h4>
+             
+             <div class="grid grid-cols-12 gap-4 items-center">
+                <!-- Fighter A Stats -->
+                <div class="col-span-12 md:col-span-3 space-y-4 text-right">
+                   <div class="fighter-a-stats space-y-3">
+                      <!-- Populated by JS -->
+                   </div>
+                </div>
+
+                <!-- Radar Chart Center -->
+                <div class="col-span-12 md:col-span-6 flex flex-col items-center gap-4">
+                   <div class="relative w-full aspect-square max-w-[320px] mx-auto flex items-center justify-center">
+                      <canvas class="radar-chart-canvas"></canvas>
+                      <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
+                         <img src="https://upload.wikimedia.org/wikipedia/commons/9/92/UFC_Logo.svg" class="w-32 filter grayscale invert" />
+                      </div>
+                   </div>
+                   <!-- Win Probability Meter -->
+                   <div class="w-full px-8 mt-auto">
+                      <div class="flex justify-between text-[9px] font-black uppercase tracking-widest text-anthropic-mid mb-1.5">
+                         <span>Win Probability</span>
+                         <span class="win-prob-val">50% / 50%</span>
+                      </div>
+                      <div class="h-2 w-full rounded-full bg-white/5 border border-white/10 overflow-hidden flex">
+                         <div class="win-meter-a h-full bg-anthropic-orange transition-all duration-700 shadow-[0_0_10px_rgba(217,119,87,0.3)]" style="width: 50%"></div>
+                         <div class="win-meter-b h-full bg-anthropic-blue transition-all duration-700 shadow-[0_0_10px_rgba(106,155,204,0.3)]" style="width: 50%"></div>
+                      </div>
+                   </div>
+                </div>
+
+                <!-- Fighter B Stats -->
+                <div class="col-span-12 md:col-span-3 space-y-4 text-left">
+                   <div class="fighter-b-stats space-y-3">
+                      <!-- Populated by JS -->
+                   </div>
+                </div>
+             </div>
+
+             <div class="fn-missing-chip mt-6 p-3 rounded-lg bg-anthropic-orange/5 border border-anthropic-orange/20 text-[10px] text-center text-anthropic-orange italic hidden"></div>
+             
+             <div class="mt-6 flex flex-col items-center gap-4">
+                <div class="fn-fuzzy-pill"></div>
+                <div class="fn-signal-chips flex flex-wrap justify-center gap-2"></div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Save Card result toast + Saved Cards Dashboard Modal -->
+    <div id="saveCardToast" class="fixed bottom-6 right-6 z-[9999] hidden rounded-xl border border-anthropic-green/40 bg-anthropic-dark backdrop-blur-md p-4 shadow-2xl text-anthropic-light max-w-sm">
+      <div class="text-xs uppercase tracking-widest text-anthropic-green font-heading font-bold mb-1">Saved Successfully</div>
+      <div class="save-card-body text-sm font-sans opacity-90"></div>
+    </div>
+
+    <!-- Floating Selection Bar for Upcoming Feed -->
+    <div id="upcomingSelectionBar" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-[95%] max-w-xl rounded-2xl border border-anthropic-orange/40 bg-anthropic-dark/95 backdrop-blur-xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.6)] flex items-center justify-between gap-4 border-b-4 border-b-anthropic-orange transition-all duration-500 translate-y-[150%]">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-anthropic-orange/20 border border-anthropic-orange/30 flex items-center justify-center">
+          <span id="upcSelectedCount" class="text-lg font-heading font-black text-anthropic-orange">0</span>
+        </div>
+        <div>
+          <p class="text-sm font-heading font-bold text-anthropic-light">Fights Selected</p>
+          <p class="text-[10px] text-anthropic-mid uppercase tracking-widest font-mono">Custom Card Builder</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="upcClearSelection" class="px-4 py-2 rounded-lg text-xs font-heading font-bold text-anthropic-mid hover:text-anthropic-light transition-colors">Clear</button>
+        <button id="upcBuildSelected" class="holo-button px-6 py-2.5 rounded-xl text-xs font-heading font-black text-anthropic-light uppercase tracking-tighter">Build Custom Card →</button>
+      </div>
+    </div>
+
+    <div id="savedCardsModal" class="fixed inset-0 z-[9998] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div class="w-full max-w-5xl max-h-[92vh] overflow-auto rounded-2xl border border-white/10 bg-anthropic-dark shadow-2xl">
+        <div class="flex items-start justify-between gap-3 p-5 border-b border-white/10 sticky top-0 bg-anthropic-dark backdrop-blur z-10">
+          <div>
+            <h3 class="text-xl font-heading font-black text-anthropic-light flex items-center gap-2">🗂️ Saved Cards Dashboard <span id="savedCountBadge" class="text-[10px] font-bold rounded-full px-2 py-0.5 bg-anthropic-blue/15 text-anthropic-blue border border-anthropic-blue/30">0</span></h3>
+            <p class="text-xs text-anthropic-mid mt-1 font-sans">Analyze historical performance and track portfolio ROI.</p>
+          </div>
+          <button id="closeSavedBtn" class="rounded-lg p-2 bg-white/5 hover:bg-white/10 text-anthropic-mid hover:text-anthropic-light transition-colors" title="Close">✕</button>
+        </div>
+        <div class="p-5 space-y-5">
+          <div class="saved-status-strip rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-anthropic-mid font-mono">
+            Loading analytics engine…
+          </div>
+          <div id="savedRoiStripHost" class="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-anthropic-green">Portfolio Analytics</div>
+                <div class="text-sm font-heading font-bold text-anthropic-light mt-0.5">Global ROI Performance</div>
+              </div>
+              <div id="savedRoiMetrics" class="flex items-center gap-3 flex-wrap text-right"></div>
+            </div>
+            <div id="portfolioChartContainer" class="w-full aspect-[5/2] bg-black/10 rounded-lg relative">
+              <canvas id="portfolioChart"></canvas>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-anthropic-mid uppercase tracking-widest font-bold text-[11px] shrink-0">Search</span>
+                <input id="savedSearch" type="text" placeholder="Filter by fighter or note…" class="w-64 max-w-full rounded-lg bg-black/30 border border-white/10 px-3 py-1.5 text-xs text-anthropic-light placeholder-anthropic-mid/50 outline-none focus:ring-2 focus:ring-anthropic-blue/40 transition-all" />
+              </div>
+            </div>
+          </div>
+          <div class="saved-list space-y-3">
+            <p class="text-anthropic-mid italic text-sm font-sans">No saved cards yet. Build a fight card, then click 💾 Save Card.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="data/fighter_stats_bundle.js"></script>
+    <script src="js/fightnomics.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+      // Panic hide: If JS fails or takes too long, force hide the loader after 5s
+      setTimeout(() => {
+        const loader = document.getElementById('intro-screen');
+        if (loader && loader.style.display !== 'none') {
+          loader.classList.add('opacity-0', 'pointer-events-none');
+          setTimeout(() => { loader.style.display = 'none'; }, 800);
+        }
+      }, 5000);
+    </script>
+  </body>
+</html>
